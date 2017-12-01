@@ -3,36 +3,14 @@ module Validation
   def self.included(recipient)
     recipient.extend ClassMethods
     recipient.send :include, InstanceMethods
+    recipient.instance_variable_set(:@validations, {})
   end
 
   module ClassMethods
+    attr_reader :validations
+
     def validate(name, mode, option = nil)
-      class_eval("@@_validations ||= {}")
-      case mode.to_sym
-      when :presence
-        mtd_symb = define_method("_valid_#{name}_presence".to_sym) do
-          instruction = "@#{name} must be present"
-          instance_eval("raise ArgumentError, '#{instruction}' if @#{name}.nil?")
-        end
-      when :format
-        exit unless option.is_a?(Regexp)
-        mtd_symb = define_method("_valid_#{name}_format".to_sym) do
-          instruction = "@#{name} is not satisfy #{option.inspect}"
-          instance_eval(
-            "raise RegexpError, '#{instruction}' if @#{name} !~ #{option.inspect}"
-          )
-        end
-      when :type
-        exit unless option.is_a?(Class)
-        mtd_symb = define_method("_valid_#{name}_type") do
-          instruction = "@#{name} is not a #{option}"
-          instance_eval(
-            "raise TypeError, '#{instruction}' unless @#{name}.is_a?(#{option})"
-          )
-        end
-      else exit
-      end
-      class_eval("@@_validations[#{mtd_symb.inspect}] = true")
+      validations["validate_#{mode}!".to_sym] = {name: name, opt: option}
     end
   end
 
@@ -45,9 +23,26 @@ module Validation
 
     private
 
+    def validate_presence!(name, _option)
+      instruction = "@#{name} must be present"
+      raise ArgumentError, instruction if instance_variable_get("@#{name}").nil?
+    end
+
+    def validate_format!(name, option)
+      exit unless option.is_a?(Regexp)
+      instruction = "@#{name} is not satisfy #{option.inspect}"
+      raise RegexpError, instruction if instance_variable_get("@#{name}") !~ option
+    end
+
+    def validate_type!(name, option)
+      exit unless option.is_a?(Class)
+      instruction = "@#{name} is not a #{option}"
+      raise TypeError, instruction unless instance_variable_get("@#{name}").is_a?(option)
+    end
+
     def validate!
-      mtds = self.class.class_variable_get(:@@_validations)
-      mtds && mtds.each_key { |mtd_symb| send(mtd_symb) }
+      mtds = self.class.validations
+      mtds && mtds.each { |mtd, val| send(mtd, val.fetch(:name), val.fetch(:opt)) }
       true
     end
   end
