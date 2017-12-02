@@ -3,14 +3,14 @@ module Validation
   def self.included(recipient)
     recipient.extend ClassMethods
     recipient.send :include, InstanceMethods
-    recipient.instance_variable_set(:@validations, {})
+    recipient.instance_variable_set(:@validations, [])
   end
 
   module ClassMethods
     attr_reader :validations
 
     def validate(name, mode, option = nil)
-      validations["validate_#{mode}!".to_sym] = {name: name, opt: option}
+      validations << {method: "validate_#{mode}!".to_sym, name: name, opt: option}
     end
   end
 
@@ -41,8 +41,10 @@ module Validation
     end
 
     def validate!
-      mtds = self.class.validations
-      mtds && mtds.each { |mtd, val| send(mtd, val.fetch(:name), val.fetch(:opt)) }
+      self.class.validations.each do |val|
+        next unless self.class.private_method_defined?(val.fetch(:method))
+        send(val.fetch(:method), val.fetch(:name), val.fetch(:opt))
+      end
       true
     end
   end
